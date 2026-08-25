@@ -9,10 +9,10 @@ from PyQt5.QtWidgets import (
     QLabel, QListWidgetItem, QDialog, QCheckBox, QTabWidget,
     QInputDialog, QMessageBox
 )
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 
-DEV_PASSWORD = "dev123"
+DEV_PASSWORD = "582011"
 
 DISCORD_THEME = """
     QWidget {
@@ -96,7 +96,7 @@ DISCORD_THEME = """
         border: none;
         border-radius: 4px;
         color: #b5bac1;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: bold;
     }
     QPushButton#icon_btn:hover {
@@ -237,11 +237,11 @@ class SettingsDialog(QDialog):
         dev_tab = QWidget()
         d_layout = QVBoxLayout(dev_tab)
         
-        dev_info = QLabel("Developer Tools & Environment")
+        dev_info = QLabel("Developer Tools & Version Control")
         dev_info.setStyleSheet("font-size: 14px; font-weight: bold; color: #f59e0b;")
         d_layout.addWidget(dev_info)
 
-        dev_desc = QLabel("Running in Developer Mode requires administrative authentication. Activating Dev Mode will reset local installations and restart the environment launcher.")
+        dev_desc = QLabel("Switching to Developer Mode forces a full application reset and returns you to the installer to select custom development builds.")
         dev_desc.setWordWrap(True)
         dev_desc.setStyleSheet("color: #949ba4; font-size: 12px; margin-bottom: 10px;")
         d_layout.addWidget(dev_desc)
@@ -297,11 +297,11 @@ class SettingsDialog(QDialog):
         if ok and password == DEV_PASSWORD:
             QMessageBox.information(
                 self, 
-                "Authentication Successful", 
-                "Developer mode authenticated. Resetting environment and launching updater..."
+                "Access Granted", 
+                "Authentication successful. Returning to Installer for Version Selection..."
             )
             
-            # Wipe local installation data
+            # Wipe local cache to force launcher selection
             install_dir = get_install_dir()
             try:
                 for item in install_dir.iterdir():
@@ -312,14 +312,14 @@ class SettingsDialog(QDialog):
             except Exception as e:
                 print(f"Cleanup error: {e}")
 
-            # Relaunch Launcher script
+            # Relaunch VerylApp.py launcher
             desktop_dir = Path.home() / "Desktop"
             launcher_script = desktop_dir / "VerylApp.py"
 
             if launcher_script.exists():
-                subprocess.Popen([sys.executable, str(launcher_script)])
+                subprocess.Popen([sys.executable, str(launcher_script), "--dev"])
             else:
-                subprocess.Popen([sys.executable, "VerylApp.py"])
+                subprocess.Popen([sys.executable, "VerylApp.py", "--dev"])
 
             QApplication.quit()
         elif ok:
