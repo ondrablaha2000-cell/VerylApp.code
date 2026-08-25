@@ -2,6 +2,8 @@ import sys
 import os
 import shutil
 import subprocess
+import requests
+import time
 from pathlib import Path
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -9,8 +11,11 @@ from PyQt5.QtWidgets import (
     QLabel, QListWidgetItem, QDialog, QCheckBox, QTabWidget,
     QInputDialog, QMessageBox
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
+
+# 🚀 Tvoje funkční Firebase URL
+FIREBASE_URL = "https://verylappchat-default-rtdb.europe-west1.firebasedatabase.app/messages.json"
 
 DEV_PASSWORD = "582011"
 
@@ -203,6 +208,30 @@ def get_install_dir():
         base_dir = Path.home() / ".local" / "share"
     return base_dir / "VerylApp"
 
+class FirebaseWorker(QThread):
+    new_message_signal = pyqtSignal(str, str, str) # sender, channel, text
+
+    def __init__(self):
+        super().__init__()
+        self.seen_keys = set()
+
+    def run(self):
+        while True:
+            try:
+                res = requests.get(FIREBASE_URL, timeout=5)
+                if res.status_code == 200 and res.json():
+                    data = res.json()
+                    for key, val in data.items():
+                        if key not in self.seen_keys:
+                            self.seen_keys.add(key)
+                            sender = val.get("sender", "Anon")
+                            channel = val.get("channel", "# general")
+                            text = val.get("text", "")
+                            self.new_message_signal.emit(sender, channel, text)
+            except Exception:
+                pass
+            time.sleep(1)
+
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -329,6 +358,9 @@ class SettingsDialog(QDialog):
 class VerylAppMain(QWidget):
     def __init__(self):
         super().__init__()
+        self.current_user = "Ondra"
+        self.active_channel = "# general"
+        
         self.setWindowTitle("VerylApp")
         self.resize(1180, 720)
         self.setStyleSheet(DISCORD_THEME)
@@ -386,7 +418,7 @@ class VerylAppMain(QWidget):
         user_info = QVBoxLayout()
         user_info.setSpacing(0)
         
-        user_name_label = QLabel("Ondra")
+        user_name_label = QLabel(self.current_user)
         user_name_label.setObjectName("user_name")
         
         user_tag_label = QLabel("#8520")
@@ -398,7 +430,6 @@ class VerylAppMain(QWidget):
         settings_btn = QPushButton("Settings")
         settings_btn.setObjectName("icon_btn")
         settings_btn.setMinimumWidth(65)
-        settings_btn.setHeight = 32
         settings_btn.clicked.connect(self.open_settings)
 
         user_bar_layout.addLayout(user_info)
@@ -421,7 +452,7 @@ class VerylAppMain(QWidget):
         chat_header_layout = QHBoxLayout(chat_header)
         chat_header_layout.setContentsMargins(16, 0, 16, 0)
 
-        self.channel_title = QLabel("# general")
+        self.channel_title = QLabel(self.active_channel)
         self.channel_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #f2f3f5;")
         
         chat_header_layout.addWidget(self.channel_title)
@@ -440,7 +471,7 @@ class VerylAppMain(QWidget):
 
         self.msg_input = QLineEdit()
         self.msg_input.setObjectName("msg_input")
-        self.msg_input.setPlaceholderText("Message #general...")
+        self.msg_input.setPlaceholderText(f"Message {self.active_channel}...")
         self.msg_input.returnPressed.connect(self.send_message)
 
         send_btn = QPushButton("Send")
@@ -481,7 +512,13 @@ class VerylAppMain(QWidget):
 
         self.channel_list.currentTextChanged.connect(self.change_channel)
 
+        # Spuštění síťového vlákna pro příjem zpráv z Firebase
+        self.firebase_thread = FirebaseWorker()
+        self.firebase_thread.new_message_signal.connect(self.receive_message)
+        self.firebase_thread.start()
+
     def change_channel(self, channel_name):
+        self.active_channel = channel_name
         self.channel_title.setText(channel_name)
         self.msg_input.setPlaceholderText(f"Message {channel_name}...")
         self.chat_display.append(f"<br><span style='color: #949ba4;'>--- Active channel changed to <b>{channel_name}</b> ---</span><br>")
@@ -489,8 +526,20 @@ class VerylAppMain(QWidget):
     def send_message(self):
         text = self.msg_input.text().strip()
         if text:
-            self.chat_display.append(f"<b>Ondra</b> <span style='color: #949ba4; font-size: 10px;'>Just now</span><br>{text}<br>")
             self.msg_input.clear()
+            try:
+                payload = {
+                    "sender": self.current_user,
+                    "channel": self.active_channel,
+                    "text": text
+                }
+                requests.post(FIREBASE_URL, json=payload, timeout=3)
+            except Exception as e:
+                self.chat_display.append(f"<span style='color: #ef4444;'>[Error sending message]: {e}</span><br>")
+
+    def receive_message(self, sender, channel, text):
+        if channel == self.active_channel:
+            self.chat_display.append(f"<b>{sender}</b> <span style='color: #949ba4; font-size: 10px;'>Just now</span><br>{text}<br>")
 
     def open_settings(self):
         dialog = SettingsDialog(self)
